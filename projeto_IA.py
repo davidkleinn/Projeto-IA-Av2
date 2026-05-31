@@ -184,42 +184,74 @@ def accuracy(y_true, y_pred):
 
 
 def confusion_per_class(y_true, y_pred, n_classes):
-    """Calcula TP, FP, FN para cada classe."""
+    """Calcula TP, FP, FN e TN para cada classe."""
     TP = np.zeros(n_classes)
     FP = np.zeros(n_classes)
     FN = np.zeros(n_classes)
+    TN = np.zeros(n_classes)
     for c in range(n_classes):
         TP[c] = np.sum((y_pred == c) & (y_true == c))
         FP[c] = np.sum((y_pred == c) & (y_true != c))
         FN[c] = np.sum((y_pred != c) & (y_true == c))
-    return TP, FP, FN
+        TN[c] = np.sum((y_pred != c) & (y_true != c))
+    return TP, FP, FN, TN
+
+
+def confusion_matrix(y_true, y_pred, n_classes):
+    matrix = np.zeros((n_classes, n_classes), dtype=int)
+    for true_value, pred_value in zip(y_true, y_pred):
+        matrix[int(true_value), int(pred_value)] += 1
+    return matrix
+
+
+def safe_divide(numerator, denominator):
+    result = np.zeros_like(numerator, dtype=np.float64)
+    mask = denominator > 0
+    result[mask] = numerator[mask] / denominator[mask]
+    return result
 
 
 def precision_macro(y_true, y_pred, n_classes):
-    TP, FP, _ = confusion_per_class(y_true, y_pred, n_classes)
-    denom = TP + FP
-    per_class = np.where(denom > 0, TP / denom, 0.0)
+    TP, FP, _, _ = confusion_per_class(y_true, y_pred, n_classes)
+    per_class = safe_divide(TP, TP + FP)
     return per_class.mean()
 
 
 def recall_macro(y_true, y_pred, n_classes):
-    TP, _, FN = confusion_per_class(y_true, y_pred, n_classes)
-    denom = TP + FN
-    per_class = np.where(denom > 0, TP / denom, 0.0)
+    TP, _, FN, _ = confusion_per_class(y_true, y_pred, n_classes)
+    per_class = safe_divide(TP, TP + FN)
+    return per_class.mean()
+
+
+def specificity_macro(y_true, y_pred, n_classes):
+    _, FP, _, TN = confusion_per_class(y_true, y_pred, n_classes)
+    per_class = safe_divide(TN, TN + FP)
     return per_class.mean()
 
 
 def f1_macro(y_true, y_pred, n_classes):
-    p = precision_macro(y_true, y_pred, n_classes)
-    r = recall_macro(y_true, y_pred, n_classes)
-    if p + r == 0:
-        return 0.0
-    return 2 * p * r / (p + r)
+    TP, FP, FN, _ = confusion_per_class(y_true, y_pred, n_classes)
+    precision = safe_divide(TP, TP + FP)
+    recall = safe_divide(TP, TP + FN)
+    f1 = safe_divide(2 * precision * recall, precision + recall)
+    return f1.mean()
 
 
 # =============================================================
 #  MÃ‰TRICAS DE REGRESSÃƒO  (sem sklearn)
 # =============================================================
+
+def mse(y_true, y_pred):
+    return np.mean((y_true - y_pred) ** 2)
+
+
+def rmse(y_true, y_pred):
+    return np.sqrt(mse(y_true, y_pred))
+
+
+def mae(y_true, y_pred):
+    return np.mean(np.abs(y_true - y_pred))
+
 
 def r2_score(y_true, y_pred):
     ss_res = np.sum((y_true - y_pred) ** 2)
@@ -450,6 +482,165 @@ class LinearRegression:
         return X_b @ self._theta
 
 
+class PerceptronSimples:
+    """
+    Perceptron Simples implementado manualmente.
+    Para duas classes, usa a regra classica com alvos -1 e +1.
+    """
+    def __init__(self, learning_rate=0.01, epochs=100, shuffle=True, seed=42):
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.shuffle = shuffle
+        self.seed = seed
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self.classes = np.unique(y)
+        n_classes = len(self.classes)
+        rng = np.random.default_rng(self.seed)
+
+        if n_classes == 2:
+            self.is_binary = True
+            self.weights = np.zeros(n_features)
+            self.bias = 0.0
+            y_binary = np.where(y == self.classes[1], 1, -1)
+
+            for _ in range(self.epochs):
+                indices = rng.permutation(n_samples) if self.shuffle else np.arange(n_samples)
+                for idx in indices:
+                    x_i = X[idx]
+                    linear_output = np.dot(x_i, self.weights) + self.bias
+                    y_predicted = 1 if linear_output >= 0 else -1
+                    if y_binary[idx] != y_predicted:
+                        update = self.learning_rate * y_binary[idx]
+                        self.weights += update * x_i
+                        self.bias += update
+        else:
+            self.is_binary = False
+            self.weights = np.zeros((n_classes, n_features))
+            self.bias = np.zeros(n_classes)
+            for class_idx, class_value in enumerate(self.classes):
+                y_binary = np.where(y == class_value, 1, -1)
+                for _ in range(self.epochs):
+                    indices = rng.permutation(n_samples) if self.shuffle else np.arange(n_samples)
+                    for idx in indices:
+                        x_i = X[idx]
+                        linear_output = np.dot(x_i, self.weights[class_idx]) + self.bias[class_idx]
+                        y_predicted = 1 if linear_output >= 0 else -1
+                        if y_binary[idx] != y_predicted:
+                            update = self.learning_rate * y_binary[idx]
+                            self.weights[class_idx] += update * x_i
+                            self.bias[class_idx] += update
+        return self
+
+    def predict(self, X):
+        if self.is_binary:
+            linear_output = np.dot(X, self.weights) + self.bias
+            class_indices = np.where(linear_output >= 0, 1, 0)
+            return self.classes[class_indices]
+
+        linear_output = np.dot(X, self.weights.T) + self.bias
+        return self.classes[np.argmax(linear_output, axis=1)]
+
+
+# =============================================================
+#  MULTI LAYER PERCEPTRON (REGRESSAO)
+# =============================================================
+
+class MLPRegressor:
+    """
+    MLP para regressao implementado manualmente com backpropagation.
+    A saida e linear e o alvo e normalizado internamente para estabilizar o treino.
+    """
+    def __init__(self, hidden_layers=(16,), learning_rate=0.01, epochs=300,
+                 activation='relu', seed=42):
+        self.hidden_layers = tuple(hidden_layers)
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.activation = activation
+        self.seed = seed
+        self.weights = []
+        self.biases = []
+
+    def _activation(self, z):
+        if self.activation == 'relu':
+            return np.maximum(0.0, z)
+        if self.activation == 'tanh':
+            return np.tanh(z)
+        if self.activation == 'sigmoid':
+            return 1.0 / (1.0 + np.exp(-np.clip(z, -250, 250)))
+        raise ValueError("activation deve ser 'relu', 'tanh' ou 'sigmoid'")
+
+    def _activation_derivative(self, activated):
+        if self.activation == 'relu':
+            return (activated > 0).astype(np.float64)
+        if self.activation == 'tanh':
+            return 1.0 - activated ** 2
+        if self.activation == 'sigmoid':
+            return activated * (1.0 - activated)
+        raise ValueError("activation deve ser 'relu', 'tanh' ou 'sigmoid'")
+
+    def _initialize_weights(self, n_features):
+        rng = np.random.default_rng(self.seed)
+        layer_sizes = [n_features] + list(self.hidden_layers) + [1]
+        self.weights = []
+        self.biases = []
+
+        for i in range(len(layer_sizes) - 1):
+            fan_in = layer_sizes[i]
+            fan_out = layer_sizes[i + 1]
+            if i == len(layer_sizes) - 2:
+                limit = np.sqrt(1.0 / fan_in)
+            elif self.activation == 'relu':
+                limit = np.sqrt(2.0 / fan_in)
+            else:
+                limit = np.sqrt(6.0 / (fan_in + fan_out))
+            self.weights.append(rng.normal(0.0, limit, size=(fan_in, fan_out)))
+            self.biases.append(np.zeros((1, fan_out)))
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self._initialize_weights(n_features)
+
+        self.y_mean = np.mean(y)
+        self.y_std = np.std(y)
+        if self.y_std == 0:
+            self.y_std = 1.0
+        y_scaled = ((y - self.y_mean) / self.y_std).reshape(-1, 1)
+
+        for _ in range(self.epochs):
+            activations = [X]
+            for layer_idx in range(len(self.weights)):
+                z = activations[-1] @ self.weights[layer_idx] + self.biases[layer_idx]
+                if layer_idx == len(self.weights) - 1:
+                    a = z
+                else:
+                    a = self._activation(z)
+                activations.append(a)
+
+            delta = 2.0 * (activations[-1] - y_scaled) / n_samples
+            deltas = [delta]
+            for layer_idx in range(len(self.weights) - 2, -1, -1):
+                delta = (deltas[0] @ self.weights[layer_idx + 1].T)
+                delta *= self._activation_derivative(activations[layer_idx + 1])
+                deltas.insert(0, delta)
+
+            for layer_idx in range(len(self.weights)):
+                grad_w = activations[layer_idx].T @ deltas[layer_idx]
+                grad_b = np.sum(deltas[layer_idx], axis=0, keepdims=True)
+                grad_w = np.clip(grad_w, -5.0, 5.0)
+                grad_b = np.clip(grad_b, -5.0, 5.0)
+                self.weights[layer_idx] -= self.learning_rate * grad_w
+                self.biases[layer_idx] -= self.learning_rate * grad_b
+        return self
+
+    def predict(self, X):
+        a = X
+        for layer_idx in range(len(self.weights)):
+            z = a @ self.weights[layer_idx] + self.biases[layer_idx]
+            a = z if layer_idx == len(self.weights) - 1 else self._activation(z)
+        return (a.flatten() * self.y_std) + self.y_mean
+
 # =============================================================
 #  LOOP DE AVALIAÃ‡ÃƒO
 # =============================================================
@@ -458,8 +649,9 @@ def evaluate_classifier(model, X, y_enc, n_classes, splits):
     """
     Roda K-Fold para um classificador e retorna mÃ©tricas mÃ©dias.
     """
-    accs, precs, recs, f1s = [], [], [], []
+    accs, precs, recs, specs, f1s = [], [], [], [], []
     t_train_list, t_test_list = [], []
+    confusion_total = np.zeros((n_classes, n_classes), dtype=int)
 
     for train_idx, test_idx in splits:
         X_tr, X_te = X[train_idx], X[test_idx]
@@ -478,15 +670,19 @@ def evaluate_classifier(model, X, y_enc, n_classes, splits):
         accs.append(accuracy(y_te, y_pred))
         precs.append(precision_macro(y_te, y_pred, n_classes))
         recs.append(recall_macro(y_te, y_pred, n_classes))
+        specs.append(specificity_macro(y_te, y_pred, n_classes))
         f1s.append(f1_macro(y_te, y_pred, n_classes))
+        confusion_total += confusion_matrix(y_te, y_pred, n_classes)
 
     return {
         'acc':     (np.mean(accs),  np.std(accs)),
         'prec':    (np.mean(precs), np.std(precs)),
         'rec':     (np.mean(recs),  np.std(recs)),
+        'spec':    (np.mean(specs), np.std(specs)),
         'f1':      (np.mean(f1s),   np.std(f1s)),
         't_train': (np.mean(t_train_list), np.std(t_train_list)),
         't_test':  (np.mean(t_test_list),  np.std(t_test_list)),
+        'confusion': confusion_total,
     }
 
 
@@ -494,7 +690,7 @@ def evaluate_regressor(model, X, y, n_features, splits):
     """
     Roda K-Fold para um regressor e retorna mÃ©tricas mÃ©dias.
     """
-    r2s, r2adjs = [], []
+    mses, rmses, maes, r2s, r2adjs = [], [], [], [], []
     t_train_list, t_test_list = [], []
 
     for train_idx, test_idx in splits:
@@ -511,10 +707,16 @@ def evaluate_regressor(model, X, y, n_features, splits):
         y_pred = model.predict(X_te_n)
         t_test_list.append(time.perf_counter() - t0)
 
+        mses.append(mse(y_te, y_pred))
+        rmses.append(rmse(y_te, y_pred))
+        maes.append(mae(y_te, y_pred))
         r2s.append(r2_score(y_te, y_pred))
         r2adjs.append(r2_adjusted(y_te, y_pred, n_features))
 
     return {
+        'mse':     (np.mean(mses),   np.std(mses)),
+        'rmse':    (np.mean(rmses),  np.std(rmses)),
+        'mae':     (np.mean(maes),   np.std(maes)),
         'r2':      (np.mean(r2s),    np.std(r2s)),
         'r2adj':   (np.mean(r2adjs), np.std(r2adjs)),
         't_train': (np.mean(t_train_list), np.std(t_train_list)),
@@ -527,31 +729,78 @@ def evaluate_regressor(model, X, y, n_features, splits):
 # =============================================================
 
 def fmt(mean, std):
-    return f"{mean:.4f} Â± {std:.4f}"
+    if max(abs(mean), abs(std)) >= 10000:
+        return f"{mean:.3e} +/- {std:.3e}"
+    return f"{mean:.4f} +/- {std:.4f}"
 
 
-def print_classification_table(results):
-    print("\n" + "=" * 100)
-    print("TABELA COMPARATIVA â€” CLASSIFICAÃ‡ÃƒO (5-Fold Cross Validation)")
-    print("=" * 100)
-    header = f"{'Classificador':<35} {'AcurÃ¡cia':>18} {'PrecisÃ£o':>18} {'Recall':>18} {'F1-Score':>18} {'T.Treino(s)':>14} {'T.Teste(s)':>13}"
+def print_classification_table(results, class_labels):
+    print("\n" + "=" * 135)
+    print("TABELA COMPARATIVA - CLASSIFICACAO (5-Fold Cross Validation)")
+    print("=" * 135)
+    header = (
+        f"{'Classificador':<34} {'Acuracia':>17} {'Precisao':>17} "
+        f"{'Sensib./Recall':>17} {'Especific.':>17} {'F1-Score':>17} "
+        f"{'T.Treino(s)':>14} {'T.Teste(s)':>13}"
+    )
     print(header)
-    print("-" * 100)
+    print("-" * 135)
     for name, r in results.items():
-        print(f"{name:<35} {fmt(*r['acc']):>18} {fmt(*r['prec']):>18} {fmt(*r['rec']):>18} {fmt(*r['f1']):>18} {fmt(*r['t_train']):>14} {fmt(*r['t_test']):>13}")
-    print("=" * 100)
+        print(
+            f"{name:<34} {fmt(*r['acc']):>17} {fmt(*r['prec']):>17} "
+            f"{fmt(*r['rec']):>17} {fmt(*r['spec']):>17} {fmt(*r['f1']):>17} "
+            f"{fmt(*r['t_train']):>14} {fmt(*r['t_test']):>13}"
+        )
+    print("=" * 135)
+    print_confusion_matrices(results, class_labels)
+
+
+def print_confusion_matrices(results, class_labels):
+    labels = [str(label) for label in class_labels]
+    label_width = max(8, max(len(label) for label in labels) + 2)
+
+    print("\nMATRIZES DE CONFUSAO ACUMULADAS NOS FOLDS")
+    print("Linhas = classe real | Colunas = classe prevista")
+    for name, r in results.items():
+        matrix = r['confusion']
+        print(f"\n{name}")
+        print(" " * label_width + "".join(f"{label:>{label_width}}" for label in labels))
+        for label, row in zip(labels, matrix):
+            print(f"{label:>{label_width}}" + "".join(f"{value:>{label_width}d}" for value in row))
+
+    best_f1 = max(results, key=lambda name: results[name]['f1'][0])
+    best_acc = max(results, key=lambda name: results[name]['acc'][0])
+    fastest_test = min(results, key=lambda name: results[name]['t_test'][0])
+    print("\nResumo para discussao:")
+    print(f"  Melhor F1-score: {best_f1} ({results[best_f1]['f1'][0]:.4f})")
+    print(f"  Melhor acuracia: {best_acc} ({results[best_acc]['acc'][0]:.4f})")
+    print(f"  Menor tempo de teste: {fastest_test} ({results[fastest_test]['t_test'][0]:.4f}s)")
 
 
 def print_regression_table(results):
-    print("\n" + "=" * 75)
-    print("TABELA COMPARATIVA â€” REGRESSÃƒO (5-Fold Cross Validation)")
-    print("=" * 75)
-    header = f"{'Regressor':<35} {'RÂ²':>16} {'RÂ² Ajustado':>18} {'T.Treino(s)':>14} {'T.Teste(s)':>13}"
+    print("\n" + "=" * 150)
+    print("TABELA COMPARATIVA - REGRESSAO (5-Fold Cross Validation)")
+    print("=" * 150)
+    header = (
+        f"{'Regressor':<38} {'MSE':>17} {'RMSE':>17} {'MAE':>17} "
+        f"{'R2':>17} {'R2 Ajustado':>17} {'T.Treino(s)':>14} {'T.Teste(s)':>13}"
+    )
     print(header)
-    print("-" * 75)
+    print("-" * 150)
     for name, r in results.items():
-        print(f"{name:<35} {fmt(*r['r2']):>16} {fmt(*r['r2adj']):>18} {fmt(*r['t_train']):>14} {fmt(*r['t_test']):>13}")
-    print("=" * 75)
+        print(
+            f"{name:<38} {fmt(*r['mse']):>17} {fmt(*r['rmse']):>17} "
+            f"{fmt(*r['mae']):>17} {fmt(*r['r2']):>17} {fmt(*r['r2adj']):>17} "
+            f"{fmt(*r['t_train']):>14} {fmt(*r['t_test']):>13}"
+        )
+    print("=" * 150)
+    best_rmse = min(results, key=lambda name: results[name]['rmse'][0])
+    best_r2 = max(results, key=lambda name: results[name]['r2'][0])
+    fastest_train = min(results, key=lambda name: results[name]['t_train'][0])
+    print("\nResumo para discussao:")
+    print(f"  Menor RMSE: {best_rmse} ({results[best_rmse]['rmse'][0]:.4f})")
+    print(f"  Melhor R2: {best_r2} ({results[best_r2]['r2'][0]:.4f})")
+    print(f"  Menor tempo de treino: {fastest_train} ({results[fastest_train]['t_train'][0]:.4f}s)")
 
 
 # =============================================================
@@ -560,7 +809,7 @@ def print_regression_table(results):
 
 def run_classification(arff_path, k_folds=5, k_neighbors=5):
     print(f"\n{'#'*60}")
-    print(f"  CLASSIFICAÃ‡ÃƒO â€” Dataset: {arff_path}")
+    print(f"  CLASSIFICACAO - Dataset: {arff_path}")
     print(f"{'#'*60}")
 
     print("Carregando dataset...")
@@ -569,7 +818,7 @@ def run_classification(arff_path, k_folds=5, k_neighbors=5):
     n_classes = len(classes)
     n_features = X.shape[1]
 
-    print(f"  InstÃ¢ncias : {X.shape[0]}")
+    print(f"  Instancias : {X.shape[0]}")
     print(f"  Atributos  : {n_features}")
     print(f"  Classes    : {classes}")
 
@@ -580,15 +829,19 @@ def run_classification(arff_path, k_folds=5, k_neighbors=5):
         f"KNN k={k_neighbors} Manhattan":     KNNClassifier(k=k_neighbors, metric='manhattan'),
         "Naive Bayes Univariado":             NaiveBayesUni(),
         "Naive Bayes Multivariado":           NaiveBayesMulti(),
+        "Perceptron lr=0.01 ep=50":           PerceptronSimples(learning_rate=0.01, epochs=50, seed=11),
+        "Perceptron lr=0.01 ep=100":          PerceptronSimples(learning_rate=0.01, epochs=100, seed=11),
+        "Perceptron lr=0.05 ep=100":          PerceptronSimples(learning_rate=0.05, epochs=100, seed=11),
+        "Perceptron lr=0.10 ep=200":          PerceptronSimples(learning_rate=0.10, epochs=200, seed=11),
     }
 
     results = {}
     for name, clf in classifiers.items():
         print(f"\nAvaliando: {name} ...")
         results[name] = evaluate_classifier(clf, X, y_enc, n_classes, splits)
-        print(f"  AcurÃ¡cia mÃ©dia: {results[name]['acc'][0]:.4f}")
+        print(f"  Acuracia media: {results[name]['acc'][0]:.4f}")
 
-    print_classification_table(results)
+    print_classification_table(results, classes)
     return results
 
 
@@ -599,7 +852,7 @@ def run_classification(arff_path, k_folds=5, k_neighbors=5):
 def run_regression(data_path, is_arff=False, target_name=None, drop_names=None,
                    k_folds=5, k_neighbors=5):
     print(f"\n{'#'*60}")
-    print(f"  REGRESSÃƒO â€” Dataset: {data_path}")
+    print(f"  REGRESSAO - Dataset: {data_path}")
     print(f"{'#'*60}")
 
     print("Carregando dataset...")
@@ -609,34 +862,38 @@ def run_regression(data_path, is_arff=False, target_name=None, drop_names=None,
             target_name=target_name,
             drop_names=drop_names
         )
-        # Para regressÃ£o em ARFF, converte rÃ³tulo para float
+        # Para regressao em ARFF, converte rotulo para float
         try:
             y = y_raw.astype(np.float64)
         except ValueError:
-            # Se nÃ£o for numÃ©rico, codifica como inteiro
+            # Se nao for numerico, codifica como inteiro
             y_enc, _ = encode_labels(y_raw)
             y = y_enc.astype(np.float64)
     else:
         X, y, feature_names = parse_csv(data_path)
 
     n_features = X.shape[1]
-    print(f"  InstÃ¢ncias : {X.shape[0]}")
+    print(f"  Instancias : {X.shape[0]}")
     print(f"  Atributos  : {n_features}")
-    print(f"  Alvo (y)   : min={y.min():.3f}, max={y.max():.3f}, mÃ©dia={y.mean():.3f}")
+    print(f"  Alvo (y)   : min={y.min():.3f}, max={y.max():.3f}, media={y.mean():.3f}")
 
     splits = kfold_indices(len(y), k=k_folds)
 
     regressors = {
         f"KNN k={k_neighbors} Euclidiana": KNNRegressor(k=k_neighbors, metric='euclidean'),
         f"KNN k={k_neighbors} Manhattan":  KNNRegressor(k=k_neighbors, metric='manhattan'),
-        "RegressÃ£o Linear MÃºltipla":       LinearRegression(),
+        "Regressao Linear Multipla":        LinearRegression(),
+        "MLP (8) relu lr=0.010 ep=250":     MLPRegressor(hidden_layers=(8,), learning_rate=0.010, epochs=250, activation='relu', seed=21),
+        "MLP (16) tanh lr=0.010 ep=300":    MLPRegressor(hidden_layers=(16,), learning_rate=0.010, epochs=300, activation='tanh', seed=22),
+        "MLP (16,8) relu lr=0.005 ep=350":  MLPRegressor(hidden_layers=(16, 8), learning_rate=0.005, epochs=350, activation='relu', seed=23),
+        "MLP (32,16) relu lr=0.003 ep=400": MLPRegressor(hidden_layers=(32, 16), learning_rate=0.003, epochs=400, activation='relu', seed=24),
     }
 
     results = {}
     for name, reg in regressors.items():
         print(f"\nAvaliando: {name} ...")
         results[name] = evaluate_regressor(reg, X, y, n_features, splits)
-        print(f"  RÂ² mÃ©dio: {results[name]['r2'][0]:.4f}")
+        print(f"  R2 medio: {results[name]['r2'][0]:.4f}")
 
     print_regression_table(results)
     return results
@@ -652,25 +909,25 @@ if __name__ == "__main__":
     # -------------------------------------------------------
     # AJUSTE AQUI OS CAMINHOS DOS SEUS DATASETS
     # -------------------------------------------------------
-    CLASSIFICATION_ARFF = "phpV5QYya.arff"   # dataset de classificaÃ§Ã£o
-    REGRESSION_DATA     = "dataset.arff"          # dataset de regressÃ£o (CSV ou ARFF)
-    REGRESSION_IS_ARFF  = True               # True se o dataset de regressÃ£o for ARFF
+    CLASSIFICATION_ARFF = "phpV5QYya.arff"   # dataset de classificacao
+    REGRESSION_DATA     = "dataset.arff"     # dataset de regressao (CSV ou ARFF)
+    REGRESSION_IS_ARFF  = True               # True se o dataset de regressao for ARFF
     REGRESSION_TARGET   = "price"
     REGRESSION_DROP     = ["id"]
     K_FOLDS      = 5
     K_NEIGHBORS  = 5
     # -------------------------------------------------------
 
-    # ClassificaÃ§Ã£o
+    # Classificacao
     if os.path.exists(CLASSIFICATION_ARFF):
         run_classification(CLASSIFICATION_ARFF, k_folds=K_FOLDS, k_neighbors=K_NEIGHBORS)
     else:
-        print(f"[AVISO] Arquivo '{CLASSIFICATION_ARFF}' nÃ£o encontrado.")
+        print(f"[AVISO] Arquivo '{CLASSIFICATION_ARFF}' nao encontrado.")
 
-    # RegressÃ£o
+    # Regressao
     if os.path.exists(REGRESSION_DATA):
         run_regression(REGRESSION_DATA, is_arff=REGRESSION_IS_ARFF,
                        target_name=REGRESSION_TARGET, drop_names=REGRESSION_DROP,
                        k_folds=K_FOLDS, k_neighbors=K_NEIGHBORS)
     else:
-        print(f"[AVISO] Arquivo '{REGRESSION_DATA}' nÃ£o encontrado.")
+        print(f"[AVISO] Arquivo '{REGRESSION_DATA}' nao encontrado.")
