@@ -1,4 +1,13 @@
-﻿import numpy as np
+"""
+Projeto IA - Classificacao e Regressao com algoritmos implementados do zero.
+
+Compara KNN, Naive Bayes (univariado e multivariado), Regressao Linear Multipla,
+Perceptron Simples e MLP (backpropagation manual) usando apenas NumPy, com
+validacao cruzada 5-fold e metricas calculadas manualmente.
+
+Uso:  python projeto_IA.py
+"""
+import numpy as np
 import time
 
 # =============================================================
@@ -7,8 +16,8 @@ import time
 
 def parse_arff(filepath, target_name=None, target_index=-1, drop_names=None):
     """
-    LÃª arquivos no formato ARFF (usado pelo OpenML / Weka).
-    Retorna X (numpy array de features) e y (numpy array de rÃ³tulos).
+    Lê arquivos no formato ARFF (usado pelo OpenML / Weka).
+    Retorna X (numpy array de features) e y (numpy array de rótulos).
     """
     drop_names = set(drop_names or [])
     attributes = []
@@ -86,14 +95,14 @@ def parse_arff(filepath, target_name=None, target_index=-1, drop_names=None):
 
 def parse_csv(filepath, target_is_last=True, has_header=True):
     """
-    LÃª arquivos CSV para regressÃ£o.
-    Retorna X (features) e y (alvo numÃ©rico).
+    Lê arquivos CSV para regressão.
+    Retorna X (features) e y (alvo numérico).
     """
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         lines = [l.strip() for l in f if l.strip()]
 
     start = 1 if has_header else 0
-    # Tenta detectar automaticamente se tem cabeÃ§alho
+    # Tenta detectar automaticamente se tem cabeçalho
     try:
         float(lines[0].split(',')[0])
         start = 0
@@ -127,18 +136,18 @@ def parse_csv(filepath, target_is_last=True, has_header=True):
 
 
 # =============================================================
-#  PRÃ‰-PROCESSAMENTO
+#  PRÉ-PROCESSAMENTO
 # =============================================================
 
 def normalize(X_train, X_test):
     """
-    NormalizaÃ§Ã£o Min-Max usando apenas os dados de treino.
-    Evita data leakage (vazamento de informaÃ§Ã£o do teste pro treino).
+    Normalização Min-Max usando apenas os dados de treino.
+    Evita data leakage (vazamento de informação do teste pro treino).
     """
     X_min = X_train.min(axis=0)
     X_max = X_train.max(axis=0)
     rng = X_max - X_min
-    rng[rng == 0] = 1  # evita divisÃ£o por zero em colunas constantes
+    rng[rng == 0] = 1  # evita divisão por zero em colunas constantes
     X_train_n = (X_train - X_min) / rng
     X_test_n  = (X_test  - X_min) / rng
     return X_train_n, X_test_n
@@ -146,7 +155,7 @@ def normalize(X_train, X_test):
 
 def encode_labels(y):
     """
-    Transforma rÃ³tulos textuais em inteiros.
+    Transforma rótulos textuais em inteiros.
     Ex: ['cat','dog','cat'] -> [0, 1, 0], classes=['cat','dog']
     """
     classes = np.unique(y)
@@ -156,12 +165,12 @@ def encode_labels(y):
 
 
 # =============================================================
-#  VALIDAÃ‡ÃƒO CRUZADA (K-FOLD) MANUAL
+#  VALIDAÇÃO CRUZADA (K-FOLD) MANUAL
 # =============================================================
 
 def kfold_indices(n, k=5, seed=42):
     """
-    Gera os Ã­ndices de treino e teste para K-Fold Cross Validation.
+    Gera os índices de treino e teste para K-Fold Cross Validation.
     Retorna lista de tuplas (idx_treino, idx_teste).
     """
     rng = np.random.default_rng(seed)
@@ -176,7 +185,7 @@ def kfold_indices(n, k=5, seed=42):
 
 
 # =============================================================
-#  MÃ‰TRICAS DE CLASSIFICAÃ‡ÃƒO  (sem sklearn)
+#  MÉTRICAS DE CLASSIFICAÇÃO  (sem sklearn)
 # =============================================================
 
 def accuracy(y_true, y_pred):
@@ -238,7 +247,7 @@ def f1_macro(y_true, y_pred, n_classes):
 
 
 # =============================================================
-#  MÃ‰TRICAS DE REGRESSÃƒO  (sem sklearn)
+#  MÉTRICAS DE REGRESSÃO  (sem sklearn)
 # =============================================================
 
 def mse(y_true, y_pred):
@@ -270,7 +279,7 @@ def r2_adjusted(y_true, y_pred, n_features):
 
 
 # =============================================================
-#  KNN  (ClassificaÃ§Ã£o e RegressÃ£o)
+#  KNN  (Classificação e Regressão)
 # =============================================================
 
 def euclidean_distance(a, b):
@@ -295,8 +304,8 @@ def pairwise_distances(X_train, X_batch, metric):
 
 class KNNClassifier:
     """
-    K-Nearest Neighbors para classificaÃ§Ã£o.
-    Prediz a classe mais comum entre os K vizinhos mais prÃ³ximos.
+    K-Nearest Neighbors para classificação.
+    Prediz a classe mais comum entre os K vizinhos mais próximos.
     """
     def __init__(self, k=5, metric='euclidean'):
         self.k = k
@@ -313,7 +322,7 @@ class KNNClassifier:
             dists = manhattan_distance(self.X_train, x)
         k_idx = np.argsort(dists)[:self.k]
         neighbors = self.y_train[k_idx]
-        # VotaÃ§Ã£o por maioria
+        # Votação por maioria
         values, counts = np.unique(neighbors, return_counts=True)
         return values[np.argmax(counts)]
 
@@ -333,8 +342,8 @@ class KNNClassifier:
 
 class KNNRegressor:
     """
-    K-Nearest Neighbors para regressÃ£o.
-    Prediz a mÃ©dia dos valores dos K vizinhos mais prÃ³ximos.
+    K-Nearest Neighbors para regressão.
+    Prediz a média dos valores dos K vizinhos mais próximos.
     """
     def __init__(self, k=5, metric='euclidean'):
         self.k = k
@@ -365,13 +374,13 @@ class KNNRegressor:
 
 # =============================================================
 #  NAIVE BAYES UNIVARIADO
-#  (baseado no cÃ³digo da professora, com predict corrigido)
+#  (baseado no código da professora, com predict corrigido)
 # =============================================================
 
 class NaiveBayesUni:
     """
     Naive Bayes Gaussiano Univariado.
-    Assume independÃªncia entre features e usa a distribuiÃ§Ã£o normal
+    Assume independência entre features e usa a distribuição normal
     1D (univariada) para estimar p(xi | classe).
     """
     def fit(self, X_train, y_train):
@@ -389,7 +398,7 @@ class NaiveBayesUni:
 
     def _pdf(self, class_idx, x):
         mean = self._mean[class_idx]
-        var  = self._var[class_idx] + 1e-9  # suavizaÃ§Ã£o numÃ©rica
+        var  = self._var[class_idx] + 1e-9  # suavização numérica
         numerator   = np.exp(-((x - mean) ** 2) / (2 * var))
         denominator = np.sqrt(2 * np.pi * var)
         return numerator / denominator
@@ -413,8 +422,8 @@ class NaiveBayesUni:
 class NaiveBayesMulti:
     """
     Naive Bayes Gaussiano Multivariado.
-    Usa a distribuiÃ§Ã£o normal multivariada completa, levando em conta
-    as correlaÃ§Ãµes entre features atravÃ©s da matriz de covariÃ¢ncia.
+    Usa a distribuição normal multivariada completa, levando em conta
+    as correlações entre features através da matriz de covariância.
     """
     def fit(self, X_train, y_train):
         n_samples, n_features = X_train.shape
@@ -427,8 +436,8 @@ class NaiveBayesMulti:
             X_c = X_train[y_train == c]
             self._mean.append(X_c.mean(axis=0))
             cov = np.cov(X_c, rowvar=False)
-            # RegularizaÃ§Ã£o: adiciona pequeno valor na diagonal para
-            # evitar matriz singular (nÃ£o invertÃ­vel)
+            # Regularização: adiciona pequeno valor na diagonal para
+            # evitar matriz singular (não invertível)
             cov += np.eye(n_features) * 1e-6
             self._cov.append(cov)
             self._priors[idx] = X_c.shape[0] / float(n_samples)
@@ -461,13 +470,13 @@ class NaiveBayesMulti:
 
 
 # =============================================================
-#  REGRESSÃƒO LINEAR MÃšLTIPLA
+#  REGRESSÃO LINEAR MÚLTIPLA
 # =============================================================
 
 class LinearRegression:
     """
-    RegressÃ£o Linear MÃºltipla pela EquaÃ§Ã£o Normal:
-        Î¸ = (Xáµ€ X)â»Â¹ Xáµ€ y
+    Regressão Linear Múltipla pela Equação Normal:
+        θ = (Xᵀ X)⁻¹ Xᵀ y
     Adiciona coluna de 1s para o intercepto (bias).
     """
     def fit(self, X_train, y_train):
@@ -642,12 +651,12 @@ class MLPRegressor:
         return (a.flatten() * self.y_std) + self.y_mean
 
 # =============================================================
-#  LOOP DE AVALIAÃ‡ÃƒO
+#  LOOP DE AVALIAÇÃO
 # =============================================================
 
 def evaluate_classifier(model, X, y_enc, n_classes, splits):
     """
-    Roda K-Fold para um classificador e retorna mÃ©tricas mÃ©dias.
+    Roda K-Fold para um classificador e retorna métricas médias.
     """
     accs, precs, recs, specs, f1s = [], [], [], [], []
     t_train_list, t_test_list = [], []
@@ -688,7 +697,7 @@ def evaluate_classifier(model, X, y_enc, n_classes, splits):
 
 def evaluate_regressor(model, X, y, n_features, splits):
     """
-    Roda K-Fold para um regressor e retorna mÃ©tricas mÃ©dias.
+    Roda K-Fold para um regressor e retorna métricas médias.
     """
     mses, rmses, maes, r2s, r2adjs = [], [], [], [], []
     t_train_list, t_test_list = [], []
@@ -725,7 +734,7 @@ def evaluate_regressor(model, X, y, n_features, splits):
 
 
 # =============================================================
-#  IMPRESSÃƒO DE RESULTADOS
+#  IMPRESSÃO DE RESULTADOS
 # =============================================================
 
 def fmt(mean, std):
@@ -804,7 +813,7 @@ def print_regression_table(results):
 
 
 # =============================================================
-#  MAIN â€” CLASSIFICAÃ‡ÃƒO
+#  MAIN — CLASSIFICAÇÃO
 # =============================================================
 
 def run_classification(arff_path, k_folds=5, k_neighbors=5):
@@ -846,7 +855,7 @@ def run_classification(arff_path, k_folds=5, k_neighbors=5):
 
 
 # =============================================================
-#  MAIN â€” REGRESSÃƒO
+#  MAIN — REGRESSÃO
 # =============================================================
 
 def run_regression(data_path, is_arff=False, target_name=None, drop_names=None,
@@ -909,8 +918,9 @@ if __name__ == "__main__":
     # -------------------------------------------------------
     # AJUSTE AQUI OS CAMINHOS DOS SEUS DATASETS
     # -------------------------------------------------------
-    CLASSIFICATION_ARFF = "phpV5QYya.arff"   # dataset de classificacao
-    REGRESSION_DATA     = "dataset.arff"     # dataset de regressao (CSV ou ARFF)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    CLASSIFICATION_ARFF = os.path.join(BASE_DIR, "data", "phpV5QYya.arff")  # classificacao (phishing)
+    REGRESSION_DATA     = os.path.join(BASE_DIR, "data", "dataset.arff")    # regressao (preco de casas)
     REGRESSION_IS_ARFF  = True               # True se o dataset de regressao for ARFF
     REGRESSION_TARGET   = "price"
     REGRESSION_DROP     = ["id"]
